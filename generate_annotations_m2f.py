@@ -42,6 +42,10 @@ COCO2TASK = {"person": "person", "bicycle": "bicycle", "car": "car", "motorcycle
              "road": "road", "pavement-merged": "sidewalk", "building-other-merged": "building",
              "tree-merged": "vegetation", "sky-other-merged": "sky"}
 
+# Cityscapes: cỏ/đất/núi trọc là `terrain` (không thuộc task), `vegetation` chỉ là cây/bụi mọc đứng
+GROUND_COVER = {"mountain-merged", "grass-merged", "dirt-merged", "sand", "gravel",
+                "rock-merged", "playingfield"}
+
 INSTANCE_SCORE = 0.5   # ngưỡng tin cậy cho object
 MIN_AREA = 40          # bỏ mảnh nhỏ hơn (pixel)
 
@@ -90,7 +94,7 @@ def coco_exclusions(pil):
     proc, model, out = run(COCO, pil)
     res = proc.post_process_panoptic_segmentation(out, threshold=0.5, target_sizes=[(H, W)])[0]
     seg = res["segmentation"].numpy()
-    hood = np.zeros((H, W), bool); big_vehicle = np.zeros((H, W), bool)
+    hood = np.zeros((H, W), bool); big_vehicle = np.zeros((H, W), bool); ground = np.zeros((H, W), bool)
     for s in res["segments_info"]:
         name = model.config.id2label[s["label_id"]]
         m = seg == s["id"]
@@ -98,7 +102,9 @@ def coco_exclusions(pil):
             hood |= m                       # chạm đáy ảnh, phủ >30% bề ngang, không lên nửa trên
         elif name in ("bus", "truck", "train"):
             big_vehicle |= m
-    return hood, big_vehicle
+        elif name in GROUND_COVER:
+            ground |= m
+    return hood, big_vehicle, ground
 
 
 def semantic_labels(pil, classes, excl=None):
@@ -112,8 +118,10 @@ def semantic_labels(pil, classes, excl=None):
         if name in classes:
             out[pred == int(cid)] = classes.index(name)
     if excl is not None:
-        hood, big_vehicle = excl
+        hood, big_vehicle, ground = excl
         out[hood] = -1                                   # ego vehicle: không thuộc class nào
+        if "vegetation" in classes:                      # đồi cỏ/đất = terrain, không phải vegetation
+            out[ground & (out == classes.index("vegetation"))] = -1
         if "car" in classes and "bus" not in classes:    # xe buýt/tải không phải car
             car = classes.index("car")
             out[big_vehicle & (out == car)] = -1
@@ -195,8 +203,8 @@ def build_semantic(task, base):
     names = []
     imgs = sorted((base / "images").glob("*.jpg"))
     excl = {p: coco_exclusions(Image.open(p).convert("RGB")) for p in imgs}   # pass 1: COCO
-    for p, (hood, bv) in excl.items():
-        print(f"  {p.name}: ego-hood {hood.mean():.1%}, bus/truck {bv.mean():.1%}")
+    for p, (hood, bv, gr) in excl.items():
+        print(f"  {p.name}: ego-hood {hood.mean():.1%}, bus/truck {bv.mean():.1%}, ground-cover {gr.mean():.1%}")
     for img in imgs:
         pil = Image.open(img).convert("RGB")
         lab = semantic_labels(pil, classes, excl[img])
