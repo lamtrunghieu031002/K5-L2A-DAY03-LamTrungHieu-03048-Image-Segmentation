@@ -5,3 +5,7 @@ __pycache__/
 data/**/groundtruth/
 data/_cache/
 /*.zip
+
+# model weights & visualization (anh goc, khong nop)
+*.pt
+viz/
