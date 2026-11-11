@@ -90,9 +90,13 @@ def viz_semantic(task_name):
                 colored[has_label] * ALPHA
             )
             result = overlay.astype(np.uint8)
-            # Ghép: overlay | mask thuần (đen = để trống) — màu sky trùng màu trời thật nên
-            # chỉ nhìn overlay dễ tưởng chưa tô
-            result = np.concatenate([result, mask_rgb], axis=1)
+            # Viền trắng giữa các vùng class (màu sky gần giống trời thật nên cần viền để thấy)
+            for (r, g, b), label in color2label.items():
+                if label == "background":
+                    continue
+                px = ((mask_rgb[:,:,0]==r) & (mask_rgb[:,:,1]==g) & (mask_rgb[:,:,2]==b)).astype(np.uint8)
+                cnts, _ = cv2.findContours(px, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+                cv2.drawContours(result, cnts, -1, (255, 255, 255), 2)
 
             result_bgr = cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
 
