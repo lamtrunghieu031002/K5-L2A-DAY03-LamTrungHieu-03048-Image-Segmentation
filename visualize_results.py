@@ -90,6 +90,9 @@ def viz_semantic(task_name):
                 colored[has_label] * ALPHA
             )
             result = overlay.astype(np.uint8)
+            # Ghép: overlay | mask thuần (đen = để trống) — màu sky trùng màu trời thật nên
+            # chỉ nhìn overlay dễ tưởng chưa tô
+            result = np.concatenate([result, mask_rgb], axis=1)
 
             result_bgr = cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
 
