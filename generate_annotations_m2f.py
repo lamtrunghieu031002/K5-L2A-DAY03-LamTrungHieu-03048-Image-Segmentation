@@ -107,6 +107,21 @@ def coco_exclusions(pil):
     return hood, big_vehicle, ground
 
 
+def tree_clusters(pil, region):
+    """Trong vùng đồi cỏ/đất, tách các bụi/cụm cây: tán cây sẫm ánh xanh lạnh
+    (B − R ≥ 14, LAB b* ≤ 122), còn cỏ khô/đất ngả nâu (R ≥ B)."""
+    import cv2
+    img = np.array(pil)
+    f = cv2.GaussianBlur(img.astype(np.float32), (0, 0), 1.5)
+    lab = cv2.cvtColor(cv2.GaussianBlur(img, (0, 0), 1.5), cv2.COLOR_RGB2LAB).astype(np.float32)
+    m = region & ((f[..., 2] - f[..., 0]) >= 14) & (lab[..., 2] <= 122)
+    m = ndimage.binary_closing(ndimage.binary_opening(m, iterations=1), iterations=2)
+    m = ndimage.binary_fill_holes(m) & region
+    lab_id, n = ndimage.label(m)
+    sizes = ndimage.sum(m, lab_id, range(1, n + 1))
+    return np.isin(lab_id, np.where(sizes >= 80)[0] + 1)
+
+
 def semantic_labels(pil, classes, excl=None):
     """-> HxW mảng chỉ số class của task (-1 = để trống)."""
     _, model = load(CITY)
@@ -121,7 +136,9 @@ def semantic_labels(pil, classes, excl=None):
         hood, big_vehicle, ground = excl
         out[hood] = -1                                   # ego vehicle: không thuộc class nào
         if "vegetation" in classes:                      # đồi cỏ/đất = terrain, không phải vegetation
-            out[ground & (out == classes.index("vegetation"))] = -1
+            veg = classes.index("vegetation")
+            hill = ground & (out == veg)
+            out[hill & ~tree_clusters(pil, hill)] = -1   # chỉ giữ bụi/cụm cây trên đồi
         if "car" in classes and "bus" not in classes:    # xe buýt/tải không phải car
             car = classes.index("car")
             out[big_vehicle & (out == car)] = -1
